@@ -4,14 +4,38 @@
 -- cole tudo -> RUN.
 --
 -- O que ele faz:
+--   0. Cria a tabela de DADOS (kv_store) e liga o tempo real.
 --   1. Cria a tabela de PERFIS (quem tem acesso e qual o papel).
 --   2. Faz o 1º usuário criado virar ADMIN automaticamente.
 --   3. Liga o RLS (Row Level Security): a partir daqui, SÓ quem
 --      estiver logado consegue ler os dados, e SÓ admin/editor
 --      consegue gravar. A "leitura" só enxerga.
 --
+-- Pode rodar mais de uma vez sem problema (é idempotente).
 -- IMPORTANTE: depois de rodar isto, o app vai EXIGIR login.
 -- ============================================================
+
+-- ---------- 0) Tabela de dados do mapa (kv_store) + tempo real ----------
+-- (precisa existir antes das regras de RLS lá embaixo)
+create table if not exists public.kv_store (
+  key         text primary key,
+  value       text,
+  updated_at  timestamptz default now()
+);
+
+-- Liga o "Realtime" para a kv_store (sincronia ao vivo entre PCs),
+-- só se ainda não estiver ligada — evita erro ao rodar de novo.
+do $$
+begin
+  if not exists (
+    select 1 from pg_publication_tables
+    where pubname = 'supabase_realtime'
+      and schemaname = 'public'
+      and tablename = 'kv_store'
+  ) then
+    execute 'alter publication supabase_realtime add table public.kv_store';
+  end if;
+end $$;
 
 -- ---------- 1) Tabela de perfis (papéis de acesso) ----------
 create table if not exists public.perfis (
